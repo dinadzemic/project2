@@ -46,92 +46,189 @@ class_diag <- function(score, truth, positive, cutoff=.5){
 
 # Mining, Classification, Prediction
 
-## Name and EID here
+## Dina Dzemic dd32778
 
 ### Introduction 
 
-Paragraph or two introducing your datasets and variables, why they are interesting to you, etc. See instructions for more information
+The dataset Guns is found within R and includes 1173 observations and 13 variables. The 3 variables violent, murder, and robbery indicate the violent crime rate, murder rate, and robbery rate, respectively, in incidents per 100000 members of the population. The variable prisoners indicates the incarceration rate in the state the previous year in sentenced prisoners per 100000 residents. The 2 variables afam and cauc indicate the percent of state population that is African American and Caucasian from ages 10 to 64. The variable male indicates the percent of state population that is male from ages 10 to 29. The variable population indicates the state population in millions of people. The variable income indicates the real per capita personal income in the state in US dollars. The variable density indicates the population per square mile of land area divided by 1000. The variable law indicates whether the state has a shall carry law in effect that year. And finally, the variables state and year indicate the state and year, respectively.
 
 ```{R}
 library(tidyverse)
-# read your datasets in here, e.g., with read_csv()
-
-# if your dataset needs tidying, do so here
-
-# any other code here
+install.packages("AER", repos = "http://cran.us.r-project.org")
+library(AER)
+data("Guns")
 ```
 
 ### Cluster Analysis
 
 ```{R}
+library(dplyr)
+numguns <- Guns %>% select(violent, murder, robbery)
+library(ggplot2)
 library(cluster)
-# clustering code here
+sil_width <- vector()
+for(i in 2:10){  
+    kms <- kmeans(numguns,centers=i)
+    sil <- silhouette(kms$cluster,dist(numguns))
+    sil_width[i]<-mean(sil[,3])
+}
+ggplot()+geom_line(aes(x=1:10,y=sil_width))+scale_x_continuous(name="k",breaks=1:10)
+Guns_pam <- numguns %>% pam(k=2)
+Guns_pam$silinfo$avg.width
+Gunsclust <- numguns %>% mutate(cluster=as.factor(Guns_pam$clustering))
+library(GGally)
+ggpairs(Gunsclust, cols=1:3, aes(color=cluster))
 ```
 
-Discussion of clustering here
+The variable violent shows the greatest difference between the two clusters, and murder shows the least difference between the two clusters. Cluster 1 (the red cluster) is low for each of the three variables, while cluster 2 (the blue cluster) is high for each of the three variables. Each of the pairwise combinations has a strong positive overall correlation, with the strongest being about 0.907 between the variables robbery and violent. Since the average silhouette width is about 0.5017339, it borders on the line of being a reasonable structure and a weak and artificial one, leaning more towards the weak side.
     
     
 ### Dimensionality Reduction with PCA
 
 ```{R}
-# PCA code here
+princomp(numguns, cor=T) -> pca1
+summary(pca1, loadings=T)
+pca1$scores %>% as.data.frame %>% mutate(PC1=pca1$scores[, 1], PC2=pca1$scores[, 2], cauc=Guns$cauc) %>% ggplot(aes(PC1, PC2, color=cauc)) + geom_point() + coord_fixed()
 ```
 
-Discussions of PCA here. 
+PC1 seems to be the overall crime rate axis. All of the values of PC1 are positive, indicating that all of the different types of crime are correlated positively. Scoring high on PC1 means a state tends to have high crime rates for all types of crime (violent crime, murder, and robbery), while scoring low on PC1 means a state tends to have low crime rates for all types of crime, so if a state has a high/low crime rate for one type of crime (let's say murder), it tends to have a high/low crime rate for the other types of crime (in this case, violent crime and robbery). PC2 is the violent crime/robbery vs murder axis. Scoring high on PC2 means a state tends to have higher crime rates for violent crime and robbery but lower crime rates for murder, while scoring low on PC2 means a state tends to have lower crime rates for violent crime and robbery but higher crime rates for murder. Most of the total variance in the dataset is explained by PC1, as it accounts for about 89.6% of the variance. PC2 explains about 7.37% of the variance, and PC3 explains about 3.02% of the variance. Together, PC1 and PC2 explain about 97% of the variance in the dataset. In my plot, I went ahead and colored my points by the cauc variable from the original dataset. There seems to be a negative correlation between percentage of the state population that is Caucasian and scores on PC1, as higher PC1 scores tend to be related to lower percentages of Caucasian residents. PC2 doesn't appear to have any association with percentage of Caucasian residents in the state.
 
 ###  Linear Classifier
 
 ```{R}
-# linear classifier code here
+logistic_fit <- glm(law ~ prisoners + afam + cauc + male + population + income + density, data=Guns, family="binomial")
+prob_reg <- predict(logistic_fit)
+class_diag(score=prob_reg, truth=Guns$law, positive="yes")
 ```
 
 ```{R}
-# cross-validation of linear classifier here
+set.seed(322)
+k=10
+
+data<-sample_frac(Guns) #randomly order rows
+folds <- rep(1:k, length.out=nrow(data)) #create folds
+
+diags<-NULL
+
+i=1
+for(i in 1:k){
+# create training and test sets
+train<-data[folds!=i,] 
+test<-data[folds==i,] 
+truth<-test$law
+
+# train model
+fit <- glm(law ~ prisoners + afam + cauc + male + population + income + density, data=Guns, family="binomial")
+
+# test model
+probs <- predict(fit,newdata = test,type="response")
+
+# get performance metrics for each fold
+diags<-rbind(diags,class_diag(probs,truth, positive="yes")) }
+
+#average performance metrics across all folds
+summarize_all(diags,mean)
 ```
 
-Discussion here
+For in-sample performance, the AUC is about 0.817. Since this is between 0.8 and 0.9, we can say that this is a good performing model per AUC. This model does a pretty good job of predicting whether a state has a shall carry law in effect that year based on the prisoners, afam, cauc, male, population, income, and density variables. The model's predictions are about 81.7% correct.
+    
+For out-of-sample performances, the AUC is about 0.81638, which is barely a difference from the previous AUC. It is still between 0.8 and 0.9, so we can say that this is a good performing model per AUC. This model does a pretty good job of predicting whether a state has a shall carry law in effect that year based on the prisoners, afam, cauc, male, population, income, and density variables, as it's predictions are about 81.6% correct. There was no noticeable decrease in AUC, suggesting that this model does not show signs of overfitting.
 
 ### Non-Parametric Classifier
 
 ```{R}
 library(caret)
-# non-parametric classifier code here
+knn_fit <- knn3(law=="yes" ~ prisoners + afam + cauc + male + population + income + density, data=Guns)
+prob_knn <- predict(knn_fit,Guns)
+class_diag(prob_knn[,2],Guns$law, positive="yes")
 ```
 
 ```{R}
-# cross-validation of np classifier here
+set.seed(322)
+k=10
+
+data<-sample_frac(Guns) #randomly order rows
+folds <- rep(1:k, length.out=nrow(data)) #create folds
+
+diags<-NULL
+
+i=1
+for(i in 1:k){
+# create training and test sets
+train<-data[folds!=i,] 
+test<-data[folds==i,] 
+truth<-test$law
+
+# train model
+fit <- fit<-knn3(law ~ prisoners + afam + cauc + male + population + income + density, data=train)
+
+# test model
+probs <- predict(fit,newdata = test)[,2]
+
+# get performance metrics for each fold
+diags<-rbind(diags,class_diag(probs,truth, positive="yes")) }
+
+#average performance metrics across all folds
+summarize_all(diags,mean)
 ```
 
-Discussion
+For in-sample performance, the AUC is about 0.8234. Since this is between 0.8 and 0.9, we can say that this is a good performing model per AUC. This model does a pretty good job of predicting whether a state has a shall carry law in effect that year based on the prisoners, afam, cauc, male, population, income, and density variables. The model's predictions are about 82.34% correct.
 
+For out-of-sample performances, the AUC is about 0.56976, which is a noteable decrease from the previous AUC. It is now between 0.5 and 0.6, so we can say that this is a bad performing model per AUC. This model does not do a good job of predicting whether a state has a shall carry law in effect that year based on the prisoners, afam, cauc, male, population, income, and density variables, as it's predictions are only about 50.7% correct. Essentially, it's wrong half the time. Due to the noticeable decrease in AUC, it is suggested that this model shows signs of overfitting. This nonparametric model does a significantly worse job than the linear model in its cross-validation performance, as the AUC drops by a lot, taking it from a good model to a bad model. The linear model was basically unchanged in cross-validation performance. The AUCs were nearly identical, suggesting it remained a good model.
 
 ### Regression/Numeric Prediction
 
 ```{R}
-# regression model code here
+fit<-lm(prisoners~robbery+murder,data=Guns)
+yhat<-predict(fit)
+mean((Guns$prisoners-yhat)^2)
 ```
 
 ```{R}
-# cross-validation of regression model here
+set.seed(1234)
+k=5 #choose number of folds
+
+data<-Guns[sample(nrow(Guns)),] #randomly order rows
+folds<-cut(seq(1:nrow(Guns)),breaks=k,labels=F) #create folds
+
+diags<-NULL
+
+for(i in 1:k){
+  train<-data[folds!=i,]
+  test<-data[folds==i,]
+  
+  ## Fit linear regression model to training set
+  fit<-lm(prisoners~robbery+murder,data=train)
+  
+  ## Get predictions/y-hats on test set (fold i)
+  yhat<-predict(fit,newdata=test)
+  
+  ## Compute prediction error  (MSE) for fold i
+  diags<-mean((test$prisoners-yhat)^2) }
+
+mean(diags)
 ```
 
-Discussion
+The MSE for the overall dataset is about 15873.45. This suggests that this might not be a very good model, as we want the MSE to be as small as possible. When cross-validation is performed on this model, the MSE does go down to 13670.74, which is lower, but it is still too high to be considered a good model. 
 
 ### Python 
 
 ```{R}
 library(reticulate)
+use_python("/usr/bin/python3", required = F)
+winter <- "I hope you have a wonderful winter break!"
 ```
 
 ```{python}
-# python code here
+winter="Stay warm!"
+print(r.winter,winter)
 ```
 
-Discussion
+R and Python are able to play with each other, and two different things can have the same name without conflict due to this. For example in the code above, winter is defined differently in R and Python; however, we are able to use both to create a phrase by running them at the same time. In Python, we can print out this phrase by referencing the R code of winter with r. and then following it with just winter as defined in Python. If we wanted to do this in R, we would reference the necessary Python code of the same name with py$. 
 
 ### Concluding Remarks
 
-Include concluding remarks here, if any
+It was very interesting going through old state data and seeing if patterns in the population could serve as predictors of crime and vice versa. Of course, some associations were found, as was expected, but obviously there are more variables that were not explored here that may offer us more insight.
 
 
 
