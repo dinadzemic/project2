@@ -99,6 +99,9 @@ PC1 seems to be the overall crime rate axis. All of the values of PC1 are positi
 logistic_fit <- glm(law ~ prisoners + afam + cauc + male + population + income + density, data=Guns, family="binomial")
 prob_reg <- predict(logistic_fit)
 class_diag(score=prob_reg, truth=Guns$law, positive="yes")
+y_hat <- ifelse(prob_reg>0.5, "yes", "no")
+y_hat <- factor(y_hat, levels=c("yes","no"))
+table(actual = Guns$law, predicted = y_hat) %>% addmargins()
 ```
 
 ```{R}
@@ -141,6 +144,9 @@ library(caret)
 knn_fit <- knn3(law=="yes" ~ prisoners + afam + cauc + male + population + income + density, data=Guns)
 prob_knn <- predict(knn_fit,Guns)
 class_diag(prob_knn[,2],Guns$law, positive="yes")
+y_hat <- ifelse(prob_knn[,2]>0.5, "yes", "no")
+y_hat <- factor(y_hat, levels=c("yes","no"))
+table(actual = Guns$law, predicted = y_hat) %>% addmargins()
 ```
 
 ```{R}
@@ -172,7 +178,7 @@ diags<-rbind(diags,class_diag(probs,truth, positive="yes")) }
 summarize_all(diags,mean)
 ```
 
-For in-sample performance, the AUC is about 0.8234. Since this is between 0.8 and 0.9, we can say that this is a good performing model per AUC. This model does a pretty good job of predicting whether a state has a shall carry law in effect that year based on the prisoners, afam, cauc, male, population, income, and density variables. The model's predictions are about 82.34% correct.
+For in-sample performance, the AUC is about 0.8234. Since this is between 0.8 and 0.9, we can say that this is a good performing model per AUC. This model does a pretty good job of predicting whether a state has a shall carry law in effect that year based on the prisoners, afam, cauc, male, population, income, and density variables. The model's predictions are about 82.34% correct. 
 
 For out-of-sample performances, the AUC is about 0.56976, which is a noteable decrease from the previous AUC. It is now between 0.5 and 0.6, so we can say that this is a bad performing model per AUC. This model does not do a good job of predicting whether a state has a shall carry law in effect that year based on the prisoners, afam, cauc, male, population, income, and density variables, as it's predictions are only about 50.7% correct. Essentially, it's wrong half the time. Due to the noticeable decrease in AUC, it is suggested that this model shows signs of overfitting. This nonparametric model does a significantly worse job than the linear model in its cross-validation performance, as the AUC drops by a lot, taking it from a good model to a bad model. The linear model was basically unchanged in cross-validation performance. The AUCs were nearly identical, suggesting it remained a good model.
 
